@@ -4,18 +4,10 @@
       <h2>知识库检索</h2>
       <p class="subtitle">搜索编程文档、最佳实践和设计模式</p>
       <div class="search-bar">
-        <el-input
-          v-model="query"
-          size="large"
-          placeholder="输入关键词搜索知识库..."
-          clearable
-          @keydown.enter="doSearch"
-        >
+        <el-input v-model="query" size="large" placeholder="输入关键词搜索知识库..." clearable @keydown.enter="doSearch">
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-button type="primary" size="large" @click="doSearch" :loading="loading">
-          搜索
-        </el-button>
+        <el-button type="primary" size="large" @click="doSearch" :loading="loading">搜索</el-button>
       </div>
     </div>
 
@@ -39,6 +31,9 @@
 import { ref } from 'vue'
 import { chat } from '../api/chat'
 import { Search } from '@element-plus/icons-vue'
+import { marked } from 'marked'
+
+marked.setOptions({ gfm: true, breaks: true })
 
 const query = ref('')
 const loading = ref(false)
@@ -48,19 +43,12 @@ const results = ref([])
 async function doSearch() {
   const q = query.value.trim()
   if (!q || loading.value) return
-
   loading.value = true
   searched.value = true
   results.value = []
-
   try {
     const res = await chat(q, 'search-' + Date.now())
-    // 解析回复中的定位信息
-    const html = res.content
-      .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-      .replace(/\n/g, '<br>')
-
-    results.value = [{ source: 'AI 回答', html }]
+    results.value = [{ source: 'AI 回答', html: marked.parse(res.content) }]
   } catch (e) {
     results.value = [{ source: '错误', html: '请求失败: ' + e.message }]
   } finally {
@@ -69,32 +57,38 @@ async function doSearch() {
 }
 </script>
 
-<style scoped>
+<style lang="scss" scoped>
+$primary: #409eff;
+$border: #e4e7ed;
+$code-bg: #0d1117;
+$code-text: #c9d1d9;
+
 .search-layout { height: 100%; display: flex; flex-direction: column; }
+
 .search-header {
   text-align: center;
   padding: 40px 24px 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
+
+  h2 { font-size: 24px; margin-bottom: 6px; }
 }
-.search-header h2 { font-size: 24px; margin-bottom: 6px; }
+
 .subtitle { font-size: 14px; opacity: .85; margin-bottom: 24px; }
+
 .search-bar {
   display: flex;
   gap: 12px;
   max-width: 640px;
   margin: 0 auto;
+
+  :deep(.el-input__wrapper) { background: rgba(255, 255, 255, .95); }
 }
-.search-bar :deep(.el-input__wrapper) {
-  background: rgba(255,255,255,.95);
-}
-.search-results {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-  background: #f5f7fa;
-}
+
+.search-results { flex: 1; overflow-y: auto; padding: 24px; background: #f5f7fa; }
+
 .result-list { max-width: 800px; margin: 0 auto; }
+
 .result-card {
   display: flex;
   gap: 16px;
@@ -102,11 +96,13 @@ async function doSearch() {
   padding: 20px;
   border-radius: 12px;
   margin-bottom: 16px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .06);
 }
+
 .result-num {
-  width: 32px; height: 32px;
-  background: #409eff;
+  width: 32px;
+  height: 32px;
+  background: $primary;
   color: #fff;
   border-radius: 8px;
   display: flex;
@@ -115,26 +111,52 @@ async function doSearch() {
   font-weight: 700;
   flex-shrink: 0;
 }
-.result-source {
-  font-size: 12px;
-  color: #999;
-  margin-bottom: 8px;
-}
+
+.result-source { font-size: 12px; color: #999; margin-bottom: 8px; }
+
+// v-html Markdown 渲染
 .result-content {
-  font-size: 14px;
-  line-height: 1.8;
-  color: #333;
-}
-.result-content :deep(pre) {
-  background: #1e1e2e;
-  color: #cdd6f4;
-  padding: 16px;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 8px 0;
-  font-size: 13px;
-}
-.result-content :deep(code) {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  :global(p) { margin: .6em 0; line-height: 1.75; }
+  :global(p:first-child) { margin-top: 0; }
+  :global(h1), :global(h2), :global(h3), :global(h4) { margin: 1em 0 .5em; font-weight: 600; }
+  :global(h1) { font-size: 1.4em; }
+  :global(h2) { font-size: 1.2em; border-bottom: 1px solid $border; padding-bottom: .3em; }
+  :global(h3) { font-size: 1.1em; }
+  :global(code) {
+    font-family: monospace;
+    font-size: .9em;
+    background: rgba(0, 0, 0, .06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #e74c3c;
+  }
+  :global(pre) {
+    background: $code-bg;
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 12px 0;
+
+    :global(code) {
+      background: transparent;
+      color: $code-text;
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 0;
+    }
+  }
+  :global(ul), :global(ol) { padding-left: 1.5em; margin: .5em 0; }
+  :global(li) { display: list-item; margin: .2em 0; }
+  :global(blockquote) {
+    border-left: 4px solid $primary;
+    padding: 4px 16px;
+    margin: 8px 0;
+    background: rgba($primary, .05);
+    color: #555;
+  }
+  :global(table) { border-collapse: collapse; margin: 8px 0; width: 100%; }
+  :global(th), :global(td) { border: 1px solid $border; padding: 8px 12px; text-align: left; font-size: 13px; }
+  :global(th) { background: #f5f7fa; font-weight: 600; }
+  :global(a) { color: $primary; }
 }
 </style>

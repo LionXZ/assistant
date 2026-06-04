@@ -112,9 +112,9 @@ def count_code_lines(filepath: str) -> str:
         return f"""
 文件: {path.name}
 总行数: {total}
-代码行: {code} ({code/total*100:.1f}%)
-注释行: {comment} ({comment/total*100:.1f}%)
-空行: {empty} ({empty/total*100:.1f}%)
+代码行: {code} ({code / total * 100:.1f}%)
+注释行: {comment} ({comment / total * 100:.1f}%)
+空行: {empty} ({empty / total * 100:.1f}%)
 """
 
     except Exception as e:

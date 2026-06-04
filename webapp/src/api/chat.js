@@ -30,7 +30,8 @@ export async function* streamChat(message, threadId = 'default') {
         const data = sse.slice(6)
         if (data === '[DONE]') return
         if (data.startsWith('[ERROR]')) throw new Error(data)
-        yield data
+        // JSON 解码 (后端做了 json.dumps 防 SSE 截断)
+        try { yield JSON.parse(data) } catch { yield data }
       }
     }
   }

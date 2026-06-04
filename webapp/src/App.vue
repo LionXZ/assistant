@@ -21,6 +21,10 @@
             <el-icon><Search /></el-icon>
             <span>检索</span>
           </el-menu-item>
+          <el-menu-item index="/docs">
+            <el-icon><FolderOpened /></el-icon>
+            <span>文档</span>
+          </el-menu-item>
         </el-menu>
         <el-tag v-if="health" type="success" size="small" effect="dark">
           {{ health.status }}
@@ -54,46 +58,67 @@ onMounted(async () => {
 })
 </script>
 
-<style>
+<style lang="scss">
+$bg-dark: #1a1a2e;
+$primary: #409eff;
+$text-dim: #ccc;
+$text-white: #fff;
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
-.app-container { height: 100vh; display: flex; flex-direction: column; }
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.app-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #1a1a2e;
+  background: $bg-dark;
   padding: 0 24px;
   height: 56px;
 }
+
 .header-left {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #fff;
+  color: $text-white;
+
+  .title {
+    font-size: 18px;
+    font-weight: 700;
+  }
 }
-.header-left .title {
-  font-size: 18px;
-  font-weight: 700;
-}
+
 .header-right {
   display: flex;
   align-items: center;
   gap: 16px;
 }
+
 .header-menu {
   background: transparent !important;
   border-bottom: none !important;
+
+  .el-menu-item {
+    color: $text-dim !important;
+    border-bottom: 2px solid transparent !important;
+
+    &:hover,
+    &.is-active {
+      color: $text-white !important;
+      border-bottom-color: $primary !important;
+    }
+  }
 }
-.header-menu .el-menu-item {
-  color: #ccc !important;
-  border-bottom: 2px solid transparent !important;
-}
-.header-menu .el-menu-item:hover,
-.header-menu .el-menu-item.is-active {
-  color: #fff !important;
-  border-bottom-color: #409eff !important;
-}
+
 .app-main {
   flex: 1;
   overflow: hidden;

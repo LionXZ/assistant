@@ -104,7 +104,7 @@ class DevAssistantAgent:
         """同步对话"""
         await self.initialize()
 
-        config = {"configurable": {"thread_id": thread_id}}
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
 
         # 如果有用户偏好，临时添加偏好中间件
         middleware = []
@@ -132,7 +132,7 @@ class DevAssistantAgent:
         """流式对话"""
         await self.initialize()
 
-        config = {"configurable": {"thread_id": thread_id}}
+        config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
 
         async for event in self.agent.astream_events(
             {"messages": [{"role": "user", "content": message}]},

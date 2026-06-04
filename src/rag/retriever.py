@@ -75,6 +75,39 @@ class RAGRetriever:
             raise RuntimeError("请先调用 build_index() 或 load_index()")
         return self.vector_store.similarity_search(query, k=k)
 
+    def add_file(self, filepath: str) -> int:
+        """
+        增量添加单个文件到索引。
+        返回新增的 chunk 数量。
+        """
+        print(f"  📄 处理文件: {filepath}")
+        docs = DocumentLoader.load_file(filepath)
+
+        splitter = DocumentSplitter(chunk_size=1000, chunk_overlap=200)
+        chunks = splitter.split(docs)
+        print(f"     → {len(chunks)} 个文本块")
+
+        if self.vector_store is None:
+            # 首次添加: 新建索引
+            print("     首次添加，创建新索引...")
+            self.vector_store = Chroma.from_documents(
+                documents=chunks,
+                embedding=self.embeddings,
+                persist_directory=settings.CHROMA_PERSIST_DIR,
+                collection_name="dev_docs",
+            )
+        else:
+            # 已有索引: 增量追加
+            self.vector_store.add_documents(chunks)
+
+        print(f"  ✓ 已添加，当前索引共 {self.vector_store._collection.count()} 个向量")
+        return len(chunks)
+
+    def has_index(self) -> bool:
+        """检查是否已有索引"""
+        import os
+        return os.path.exists(settings.CHROMA_PERSIST_DIR) and self.vector_store is not None
+
 
 # 单例
 rag_retriever = RAGRetriever()
