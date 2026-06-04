@@ -10,8 +10,12 @@
           class="thread-item" :class="{ active: t.id === currentThread }"
           @click="switchThread(t.id)">
           <el-icon><ChatLineSquare /></el-icon>
-          <span class="thread-title">{{ t.title }}</span>
+          <span class="thread-title" :title="t.title">{{ t.title }}</span>
           <span class="thread-time">{{ t.time }}</span>
+          <span class="thread-actions">
+            <el-button link size="small" :icon="Edit" @click.stop="renameThread(t)" title="重命名" />
+            <el-button link size="small" :icon="Delete" @click.stop="deleteThread(t)" title="删除" />
+          </span>
         </div>
       </div>
     </aside>
@@ -68,34 +72,37 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
-import { streamChat } from '../api/chat'
+import { ref, nextTick, watch, onMounted } from 'vue'
+import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { streamChat, listSessions, deleteSessionApi, getSessionMessages } from '../api/chat'
+import { useAuthStore } from '../stores/auth'
 import { marked } from 'marked'
+import { ElMessageBox, ElMessage } from 'element-plus'
 
-// ---- Markdown 渲染器 (最简) ----
+// ---- Markdown ----
 marked.setOptions({ gfm: true, breaks: true })
 
 function renderHtml(text) {
   if (!text) return ''
   try {
     return marked.parse(text)
-  } catch (e) {
-    // fallback: 保证至少换行
+  } catch {
     return text.replace(/\n/g, '<br>')
   }
 }
+
+const auth = useAuthStore()
 
 // ---- 状态 ----
 const input = ref('')
 const loading = ref(false)
 const currentThread = ref('default')
-const messages = ref([])
 const msgListRef = ref(null)
+const threads = ref([])
 
-const threads = ref([
-  { id: 'default', title: '默认会话', time: new Date().toLocaleTimeString() },
-])
+// 每个会话独立的消息缓存
+const messagesByThread = ref({})
+const messages = ref([])
 
 const quickPrompts = [
   'Python 装饰器原理是什么？',
@@ -104,16 +111,98 @@ const quickPrompts = [
   '列出这个项目的文件结构',
 ]
 
+onMounted(() => fetchSessions(true))
+
+async function fetchSessions(loadFirst = false) {
+  try {
+    const data = await listSessions()
+    threads.value = (data.sessions || []).map(s => ({
+      id: s.thread_id,
+      title: s.title || '未命名',
+      time: s.updated_at?.slice(0, 16) || '',
+    }))
+    if (threads.value.length === 0) {
+      newChat()
+      return
+    }
+    // 只在首次加载时自动打开第一个会话
+    if (loadFirst && (!currentThread.value || !threads.value.find(t => t.id === currentThread.value))) {
+      await loadThread(threads.value[0].id)
+    }
+  } catch {
+    newChat()
+  }
+}
+
+async function loadThread(id) {
+  currentThread.value = id
+  // 先从缓存取
+  if (messagesByThread.value[id]) {
+    messages.value = messagesByThread.value[id]
+    return
+  }
+  // 从 API 加载历史消息
+  messages.value = []
+  try {
+    const data = await getSessionMessages(id)
+    if (data.messages?.length) {
+      messages.value = data.messages
+      messagesByThread.value = { ...messagesByThread.value, [id]: data.messages }
+    }
+  } catch {}
+}
+
 function newChat() {
   const id = 'thread-' + Date.now()
-  threads.value.unshift({ id, title: '新会话 ' + threads.value.length, time: new Date().toLocaleTimeString() })
+  threads.value.unshift({ id, title: '新会话', time: '' })
   currentThread.value = id
+  messagesByThread.value = { ...messagesByThread.value, [id]: [] }
   messages.value = []
 }
 
-function switchThread(id) {
-  currentThread.value = id
-  messages.value = []
+async function switchThread(id) {
+  // 保存当前会话消息（用 spread 触发响应式）
+  if (messages.value.length > 0) {
+    messagesByThread.value = { ...messagesByThread.value, [currentThread.value]: [...messages.value] }
+  }
+  await loadThread(id)
+  await nextTick()
+  scrollBottom()
+}
+
+async function renameThread(t) {
+  try {
+    const { value } = await ElMessageBox.prompt('会话名称', '重命名', {
+      inputValue: t.title,
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    })
+    if (value) t.title = value
+  } catch {}
+}
+
+async function deleteThread(t) {
+  try {
+    await ElMessageBox.confirm('删除该会话？', '确认', {
+      type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消',
+    })
+  } catch { return }
+
+  try {
+    await deleteSessionApi(t.id)
+    threads.value = threads.value.filter(s => s.id !== t.id)
+    const newMap = { ...messagesByThread.value }
+    delete newMap[t.id]
+    messagesByThread.value = newMap
+    if (currentThread.value === t.id) {
+      const nextId = threads.value[0]?.id
+      if (nextId) await loadThread(nextId)
+      else newChat()
+    }
+    if (threads.value.length === 0) newChat()
+  } catch {
+    ElMessage.error('删除失败')
+  }
 }
 
 async function send(text) {
@@ -155,8 +244,10 @@ async function send(text) {
     loading.value = false
     currentToolName = ''
     toolBuffer = ''
+    fetchSessions()
   }
 }
+
 
 function scrollBottom() {
   if (msgListRef.value) msgListRef.value.scrollTop = msgListRef.value.scrollHeight
@@ -195,7 +286,16 @@ $text-dim: #999;
   font-size: 13px;
   border-left: 3px solid transparent;
 
-  &:hover { background: #ecf5ff; }
+  .thread-actions {
+    display: none;
+    gap: 2px;
+  }
+
+  &:hover {
+    background: #ecf5ff;
+
+    .thread-actions { display: flex; }
+  }
 
   &.active {
     background: #ecf5ff;
@@ -344,7 +444,7 @@ $text-dim: #999;
 // 用户消息中的 code/pre
 .msg-item.user .msg-content {
   :global(pre) { background: rgba(0, 0, 0, .8); }
-  :global(code) { background: rgba(255, 255, 255, .2); color: #fff; }
+  :global(code) { background: rgba(255, 255, 255, .2); color: #e74c3c; }
 }
 
 .tool-calls { margin-top: 8px; }

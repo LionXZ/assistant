@@ -12,7 +12,9 @@
 | **大模型** | DeepSeek Chat (OpenAI 兼容) | 可切换为任何 OpenAI 兼容模型 |
 | **嵌入模型** | BAAI/bge-small-zh-v1.5 (本地) / OpenAI | 自动回落，无需额外配置 |
 | **向量数据库** | ChromaDB | 嵌入式，零运维 |
-| **短期记忆** | SQLite / Memory Checkpointer | 多轮对话上下文 |
+| **业务数据库** | MySQL 8.0 | 用户、会话、消息、对话状态 |
+| **向量数据库** | ChromaDB | 嵌入式，零运维 |
+| **对话记忆** | MySQL Checkpointer (自实现) | 多轮对话上下文持久化 |
 | **长期记忆** | LangGraph InMemoryStore | 用户偏好、跨会话记忆 |
 | **搜索 API** | Tavily Search | 联网搜索工具（可选） |
 | **后端框架** | FastAPI + Uvicorn | 异步、自动文档 |
@@ -23,6 +25,72 @@
 | **Markdown** | marked v18 | GFM + 代码高亮 |
 
 ---
+
+## 数据库表结构 (MySQL `dev-assistant`)
+
+### users — 用户账号
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | INT PK | 自增主键 |
+| `username` | VARCHAR(30) UNIQUE | 用户名 |
+| `email` | VARCHAR(100) UNIQUE | 邮箱 |
+| `password` | VARCHAR(255) | bcrypt 哈希 |
+| `created_at` | DATETIME | 注册时间 |
+
+### sessions — 会话列表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | INT PK | 自增主键 |
+| `user_id` | INT FK → users.id | 所属用户 |
+| `thread_id` | VARCHAR(100) | 会话 ID (前端 UUID) |
+| `title` | VARCHAR(50) | AI 自动生成标题 |
+| `updated_at` | DATETIME | 最后活跃时间 |
+
+联合唯一键：`(user_id, thread_id)`
+
+### messages — 对话历史
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | INT PK | 自增主键 |
+| `user_id` | INT FK → users.id | 所属用户 |
+| `thread_id` | VARCHAR(100) | 所属会话 |
+| `role` | VARCHAR(20) | `user` / `assistant` |
+| `content` | TEXT | 消息内容 |
+| `created_at` | DATETIME | 发送时间 |
+
+索引：`(user_id, thread_id)`
+
+### langgraph_checkpoints — Agent 对话状态
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `thread_id` | VARCHAR(100) | 会话 ID |
+| `checkpoint_ns` | VARCHAR(50) | 命名空间 |
+| `checkpoint_id` | VARCHAR(50) | 检查点 ID |
+| `parent_checkpoint_id` | VARCHAR(50) | 父检查点 |
+| `type` | VARCHAR(50) | 序列化格式 |
+| `checkpoint` | LONGBLOB | 检查点数据 (二进制) |
+| `metadata` | LONGTEXT | 元数据 (JSON) |
+
+主键：`(thread_id, checkpoint_ns, checkpoint_id)`
+
+### langgraph_writes — Agent 暂存写入
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `thread_id` | VARCHAR(100) | 会话 ID |
+| `checkpoint_ns` | VARCHAR(50) | 命名空间 |
+| `checkpoint_id` | VARCHAR(50) | 关联检查点 |
+| `task_id` | VARCHAR(50) | 任务 ID |
+| `idx` | INT | 写入序号 |
+| `channel` | VARCHAR(100) | 通道名 |
+| `type` | VARCHAR(50) | 序列化格式 |
+| `value` | LONGBLOB | 值 (二进制) |
+
+主键：`(thread_id, checkpoint_ns, checkpoint_id, task_id, idx)`
 
 ## 目录结构
 
