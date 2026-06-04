@@ -32,6 +32,24 @@
         <el-tag v-else type="danger" size="small" effect="dark">
           离线
         </el-tag>
+
+        <el-dropdown v-if="auth.isLoggedIn" trigger="click">
+          <span class="user-btn">
+            <el-icon><User /></el-icon>
+            {{ auth.user?.username }}
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item disabled>
+                {{ auth.user?.email }}
+              </el-dropdown-item>
+              <el-dropdown-item divided @click="doLogout">
+                <el-icon><SwitchButton /></el-icon>
+                退出登录
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </el-header>
 
@@ -45,11 +63,19 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { healthCheck } from './api/chat'
+import { useAuthStore } from './stores/auth'
 
 const route = useRoute()
+const router = useRouter()
+const auth = useAuthStore()
 const health = ref(null)
+
+function doLogout() {
+  auth.logout()
+  router.push('/login')
+}
 
 onMounted(async () => {
   try {
@@ -103,6 +129,17 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.user-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: $text-dim;
+  cursor: pointer;
+  font-size: 14px;
+
+  &:hover { color: $text-white; }
 }
 
 .header-menu {

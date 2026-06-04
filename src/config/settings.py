@@ -34,13 +34,23 @@ class Settings:
     # ===== 向量数据库 =====
     CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", str(PROJECT_ROOT / "data" / "chroma"))
 
-    # ===== SQLite Checkpointer =====
-    SQLITE_DB_PATH: str = os.getenv("SQLITE_DB_PATH", str(PROJECT_ROOT / "data" / "checkpoints.db"))
+    # ===== MySQL =====
+    DB_ENGINE: str = os.getenv("DB_ENGINE", "mysql")
+    DB_NAME: str = os.getenv("DB_NAME", "dev-assistant")
+    DB_USER: str = os.getenv("DB_USER", "root")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
+    DB_HOST: str = os.getenv("DB_HOST", "localhost")
+    DB_PORT: int = int(os.getenv("DB_PORT", "3306"))
+    DB_CHARSET: str = os.getenv("DB_CHARSET", "utf8mb4")
 
     # ===== LangSmith =====
     LANGSMITH_API_KEY: str = os.getenv("LANGSMITH_API_KEY", "")
     LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "dev-assistant")
     LANGSMITH_TRACING: bool = os.getenv("LANGSMITH_TRACING", "false").lower() == "true"
+
+    # ===== JWT =====
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-assistant-secret-change-in-production")
+    JWT_EXPIRE_HOURS: int = int(os.getenv("JWT_EXPIRE_HOURS", "72"))
 
     # ===== Agent =====
     MAX_MODEL_RETRIES: int = int(os.getenv("MAX_MODEL_RETRIES", "3"))

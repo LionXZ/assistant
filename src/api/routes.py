@@ -1,16 +1,94 @@
 # src/api/routes.py
 import os
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from fastapi.responses import StreamingResponse
-from src.api.schemas import ChatRequest, ChatResponse, HealthResponse
+from src.api.schemas import (
+    ChatRequest, ChatResponse, HealthResponse,
+    RegisterRequest, LoginRequest, AuthResponse, UserResponse,
+    SessionItem, SessionListResponse,
+)
 from src.agent.assistant import assistant
 from src.config.settings import settings, PROJECT_ROOT
 from src.tools.registry import tool_registry
 from src.rag.retriever import rag_retriever
+from src.auth.auth import get_current_user, create_token
+from src.auth.models import create_user, verify_user, get_user_by_id
+from src.auth.models import list_user_sessions, upsert_session, delete_session
+from src.auth.models import save_message, get_session_messages
 
 router = APIRouter()
 
+
+# ===== AI 智能标题 =====
+
+async def _auto_title(user_id: int, thread_id: str, user_msg: str, ai_reply: str = ""):
+    """用 AI 生成会话标题 (2-10字)，优先用用户消息"""
+    try:
+        from src.models.chat_model import get_mini_model
+        model = get_mini_model(temperature=0.3)
+        text = ai_reply if ai_reply else user_msg
+        prompt = f"用2-10个汉字为以下内容起一个简短标题，不要标点符号：\n\n{text[:200]}\n\n标题："
+        result = await model.ainvoke(prompt)
+        title = result.content.strip().replace("'", "").replace('"', "").replace("标题：", "").replace(" ", "")
+        if len(title) > 20:
+            title = title[:20]
+        if title:
+            upsert_session(user_id, thread_id, title)
+    except Exception:
+        pass
+
+
+# ===== 认证 =====
+
+@router.post("/auth/register", response_model=AuthResponse)
+async def register(req: RegisterRequest):
+    user = create_user(req.username, req.email, req.password)
+    if not user:
+        raise HTTPException(status_code=400, detail="用户名或邮箱已存在")
+    token = create_token(user["id"], user["username"])
+    return {"token": token, "user": {"id": user["id"], "username": user["username"], "email": user["email"]}}
+
+
+@router.post("/auth/login", response_model=AuthResponse)
+async def login(req: LoginRequest):
+    user = verify_user(req.username, req.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    token = create_token(user["id"], user["username"])
+    return {"token": token, "user": {"id": user["id"], "username": user["username"], "email": user["email"]}}
+
+
+@router.get("/auth/me", response_model=UserResponse)
+async def me(current_user: dict = Depends(get_current_user)):
+    return current_user
+
+
+# ===== 会话管理 =====
+
+@router.get("/sessions", response_model=SessionListResponse)
+async def list_sessions(current_user: dict = Depends(get_current_user)):
+    sessions = list_user_sessions(current_user["id"])
+    return {"sessions": [
+        {"thread_id": s["thread_id"], "title": s["title"], "updated_at": str(s["updated_at"])}
+        for s in sessions
+    ]}
+
+
+@router.delete("/sessions/{thread_id}")
+async def delete_user_session(thread_id: str, current_user: dict = Depends(get_current_user)):
+    delete_session(current_user["id"], thread_id)
+    return {"deleted": thread_id}
+
+
+@router.get("/sessions/{thread_id}/messages")
+async def get_thread_messages(thread_id: str, current_user: dict = Depends(get_current_user)):
+    """获取会话历史消息"""
+    msgs = get_session_messages(current_user["id"], thread_id)
+    return {"messages": msgs}
+
+
+# ===== 健康检查 =====
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -23,33 +101,67 @@ async def health_check():
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, current_user: dict = Depends(get_current_user)):
     """同步对话"""
     try:
+        sessions = list_user_sessions(current_user["id"])
+        is_new = not any(s["thread_id"] == request.thread_id for s in sessions)
+
+        upsert_session(current_user["id"], request.thread_id, request.message[:30])
+
+        if is_new:
+            await _auto_title(current_user["id"], request.thread_id, request.message)
+
         result = await assistant.chat(
             message=request.message,
             thread_id=request.thread_id,
-            user_id=request.user_id,
+            user_id=str(current_user["id"]),
         )
+
+        save_message(current_user["id"], request.thread_id, "user", request.message)
+        if result.get("content"):
+            save_message(current_user["id"], request.thread_id, "assistant", result["content"])
+
         return ChatResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, current_user: dict = Depends(get_current_user)):
     """流式对话"""
+    sessions = list_user_sessions(current_user["id"])
+    is_new = not any(s["thread_id"] == request.thread_id for s in sessions)
+
+    # 先用首条消息做临时标题
+    upsert_session(current_user["id"], request.thread_id, request.message[:30])
+
+    # 新会话：同步生成 AI 标题（不等回复，直接用问题生成）
+    if is_new:
+        await _auto_title(current_user["id"], request.thread_id, request.message)
+
+    ai_reply_parts = []
+
     async def generate():
+        nonlocal ai_reply_parts
         try:
             async for chunk in assistant.chat_stream(
                 message=request.message,
                 thread_id=request.thread_id,
+                user_id=str(current_user["id"]),
             ):
                 import json
+                if not chunk.startswith('🔧') and not chunk.startswith('\n📋'):
+                    ai_reply_parts.append(chunk)
                 yield f"data: {json.dumps(chunk)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: [ERROR] {str(e)}\n\n"
+        finally:
+            save_message(current_user["id"], request.thread_id, "user", request.message)
+            ai_text = ''.join(ai_reply_parts).strip()
+            if ai_text:
+                save_message(current_user["id"], request.thread_id, "assistant", ai_text)
 
     return StreamingResponse(
         generate(),

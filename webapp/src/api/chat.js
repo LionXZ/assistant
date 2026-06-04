@@ -1,12 +1,17 @@
 const BASE = '/api/v1'
 
+function authHeaders() {
+  const token = localStorage.getItem('token') || ''
+  return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
+}
+
 /**
  * 流式对话 — 返回 ReadableStream 供组件逐字消费
  */
 export async function* streamChat(message, threadId = 'default') {
   const response = await fetch(`${BASE}/chat/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({ message, thread_id: threadId }),
   })
 
@@ -47,9 +52,33 @@ export async function healthCheck() {
 export async function chat(message, threadId = 'default') {
   const res = await fetch(`${BASE}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({ message, thread_id: threadId }),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+/** 会话列表 */
+export async function listSessions() {
+  const res = await fetch(`${BASE}/sessions`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+/** 删除会话 */
+export async function deleteSessionApi(threadId) {
+  await fetch(`${BASE}/sessions/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+}
+
+/** 获取会话历史消息 */
+export async function getSessionMessages(threadId) {
+  const res = await fetch(`${BASE}/sessions/${encodeURIComponent(threadId)}/messages`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) return { messages: [] }
   return res.json()
 }
