@@ -36,7 +36,9 @@
     </el-header>
 
     <el-main class="app-main">
+      <keep-alive> 
       <router-view />
+      </keep-alive>
     </el-main>
   </el-container>
 </template>
