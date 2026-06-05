@@ -1,0 +1,17 @@
+[
+    {
+        "query": "Python 中如何处理文件？",
+        "expected_tools": ["search_knowledge_base"],
+        "expected_keywords": ["open", "with", "read", "write"]
+    },
+    {
+        "query": "分析 src/main.py 的代码",
+        "expected_tools": ["read_code_file"],
+        "expected_keywords": ["代码", "建议"]
+    },
+    {
+        "query": "Go 语言的错误处理最佳实践是什么？",
+        "expected_tools": ["search_knowledge_base"],
+        "expected_keywords": ["error", "if err", "fmt.Errorf"]
+    }
+]

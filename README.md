@@ -13,9 +13,9 @@
 | **嵌入模型** | BAAI/bge-small-zh-v1.5 (本地) / OpenAI | 自动回落，无需额外配置 |
 | **向量数据库** | ChromaDB | 嵌入式，零运维 |
 | **业务数据库** | MySQL 8.0 | 用户、会话、消息、对话状态 |
-| **向量数据库** | ChromaDB | 嵌入式，零运维 |
 | **对话记忆** | MySQL Checkpointer (自实现) | 多轮对话上下文持久化 |
 | **长期记忆** | LangGraph InMemoryStore | 用户偏好、跨会话记忆 |
+| **邮箱服务** | QQ 邮箱 SMTP | 验证码发送 (免费 500封/天) |
 | **搜索 API** | Tavily Search | 联网搜索工具（可选） |
 | **后端框架** | FastAPI + Uvicorn | 异步、自动文档 |
 | **前端框架** | Vue 3 + Vite | Composition API |
@@ -36,6 +36,10 @@
 | `username` | VARCHAR(30) UNIQUE | 用户名 |
 | `email` | VARCHAR(100) UNIQUE | 邮箱 |
 | `password` | VARCHAR(255) | bcrypt 哈希 |
+| `is_admin` | TINYINT | 管理员标识 (0/1)，admin 为系统保留账户 |
+| `email_verified` | TINYINT | 邮箱验证状态 |
+| `verification_code` | VARCHAR(6) | 邮箱验证码 |
+| `reset_token` | VARCHAR(6) | 密码重置码 |
 | `created_at` | DATETIME | 注册时间 |
 
 ### sessions — 会话列表
@@ -96,66 +100,73 @@
 
 ```
 dev-assistant/
-├── .env                          # 环境变量 (不提交)
-├── .env.example                  # 环境变量模板
 ├── .gitignore
-├── requirements.txt              # Python 依赖
 ├── README.md
 │
-├── src/                          # 后端
-│   ├── app.py                    # 启动入口
-│   ├── config/settings.py        # 全局配置 (加载 .env)
-│   ├── models/chat_model.py      # DeepSeek/OpenAI 模型封装
-│   ├── agent/assistant.py        # Agent 组装 + 对话 + 流式
-│   ├── api/
-│   │   ├── server.py             # FastAPI 应用 + 生命周期
-│   │   ├── routes.py             # /chat /chat/stream /rag/*
-│   │   └── schemas.py            # 请求/响应模型
-│   ├── tools/
-│   │   ├── code_tools.py         # 读文件、列目录、统计行数
-│   │   ├── web_tools.py          # Tavily 联网搜索
-│   │   ├── rag_tool.py           # 知识库检索工具
-│   │   ├── registry.py           # 工具注册中心（单例）
-│   │   └── mcp_tools.py          # MCP 外部工具集成
-│   ├── rag/
-│   │   ├── loader.py             # txt/md/pdf 文档加载
-│   │   ├── splitter.py           # 智能文本切分
-│   │   ├── embedder.py           # 嵌入模型 (OpenAI/本地)
-│   │   └── retriever.py          # ChromaDB 检索器 + 增量索引
-│   ├── memory/
-│   │   ├── checkpointer.py       # 短期对话记忆
-│   │   └── store.py              # 长期用户偏好记忆
-│   ├── middleware/custom.py      # 偏好注入 + 性能监控
-│   └── utils/logger.py           # JSON 格式日志
+├── backend/                      # Python FastAPI 后端
+│   ├── venv/                     # Python 虚拟环境
+│   ├── .env / .env.example
+│   ├── requirements.txt
+│   ├── src/
+│   │   ├── app.py                # 启动入口
+│   │   ├── config/settings.py    # 全局配置
+│   │   ├── models/chat_model.py  # DeepSeek/OpenAI 模型封装
+│   │   ├── agent/assistant.py    # Agent 组装 + 对话 + 流式
+│   │   ├── auth/                 # 用户认证
+│   │   │   ├── auth.py           # JWT 签发/验证
+│   │   │   ├── email.py          # QQ 邮箱 SMTP
+│   │   │   └── models.py         # MySQL 用户/会话/消息/验证码
+│   │   ├── api/                  # FastAPI 路由
+│   │   │   ├── server.py
+│   │   │   ├── routes.py
+│   │   │   └── schemas.py
+│   │   ├── tools/                # Agent 工具
+│   │   │   ├── code_tools.py
+│   │   │   ├── web_tools.py
+│   │   │   ├── rag_tool.py
+│   │   │   ├── registry.py
+│   │   │   └── mcp_tools.py
+│   │   ├── rag/                  # RAG 检索
+│   │   │   ├── loader.py
+│   │   │   ├── splitter.py
+│   │   │   ├── embedder.py
+│   │   │   └── retriever.py
+│   │   ├── memory/               # 记忆系统
+│   │   │   ├── checkpointer.py
+│   │   │   ├── mysql_saver.py    # MySQL Checkpointer
+│   │   │   └── store.py
+│   │   ├── middleware/custom.py
+│   │   └── utils/logger.py
+│   ├── tests/
+│   └── evaluations/
 │
-├── data/
-│   ├── documents/                # RAG 知识库 (支持子目录)
-│   │   ├── 01-编程语言/          # Go语言、Python 等
-│   │   ├── 02-Web开发框架/       # Django 等
-│   │   ├── 03-数据库与缓存/      # MySQL、Redis、向量数据库等
-│   │   ├── 04-AI-Agent/         # LangChain、AI Agent 设计
-│   │   └── ...                  # 上传时 AI 自动分类
-│   ├── chroma/                   # 向量索引 (自动生成)
-│   └── checkpoints.db            # 对话检查点 (自动生成)
-│
-├── tests/                        # 测试
-├── evaluations/                  # 评估数据集
-│
-├── webapp/                       # 前端
+├── frontend/                     # Vue 3 + Vite 前端
 │   ├── index.html
-│   ├── vite.config.js            # Vite + API 代理
+│   ├── vite.config.js
 │   ├── package.json
 │   └── src/
-│       ├── main.js               # Vue 入口
-│       ├── App.vue               # 布局 + 导航
-│       ├── router/index.js       # 路由 (懒加载)
-│       ├── api/chat.js           # 流式/同步 API 封装
+│       ├── main.js
+│       ├── App.vue
+│       ├── router/index.js
+│       ├── stores/auth.js        # Pinia 认证
+│       ├── api/chat.js
 │       └── views/
-│           ├── ChatView.vue      # 流式对话页
-│           ├── SearchView.vue    # 知识库检索页
-│           └── DocsView.vue      # 文档管理页 (上传+AI分类)
+│           ├── ChatView.vue
+│           ├── SearchView.vue
+│           ├── DocsView.vue
+│           ├── LoginView.vue
+│           ├── RegisterView.vue
+│           └── ForgotPasswordView.vue
 │
-└── venv/                         # Python 虚拟环境 (项目内)
+├── desktop/                      # Electron 桌面端 (macOS)
+│   ├── main.js                   # 主进程
+│   ├── preload.js                # 安全桥接
+│   ├── package.json
+│   └── icons/
+│
+├── data/
+│   ├── documents/                # RAG 知识库
+│   └── chroma/                   # 向量索引
 ```
 
 ---
@@ -173,17 +184,15 @@ dev-assistant/
 ```bash
 cd dev-assistant
 
-# 创建虚拟环境 (如未创建)
-python3 -m venv venv
-source venv/bin/activate
+# 创建虚拟环境
+python3 -m venv backend/venv
 
 # 安装依赖
-pip install -r requirements.txt
+backend/venv/bin/pip install -r backend/requirements.txt
 
 # 配置环境变量
-cp .env.example .env
-# 编辑 .env，填入 LLM_API_KEY（DeepSeek API Key）
-# OPENAI_API_KEY 可留空，嵌入自动用本地模型
+cp backend/.env.example backend/.env
+# 编辑 backend/.env 填入所有必填项
 ```
 
 **.env 关键配置：**
@@ -197,10 +206,22 @@ LLM_MODEL=deepseek-chat
 # 嵌入模型 (可选，不填自动用本地 bge-small-zh ~100MB)
 OPENAI_API_KEY=
 
+# MySQL (必填)
+DB_NAME=dev-assistant
+DB_USER=root
+DB_PASSWORD=your-password
+DB_HOST=localhost
+DB_PORT=3306
+
+# QQ 邮箱 SMTP (必填, 注册/重置密码用)
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+SMTP_USER=your-qq@qq.com
+SMTP_PASSWORD=授权码
+
 # 搜索 API (可选)
 TAVILY_API_KEY=
 
-# 调试模式
 DEBUG=true
 ```
 
@@ -208,22 +229,39 @@ DEBUG=true
 
 ```bash
 # 终端1: 后端 (端口 8000)
-source venv/bin/activate
-python -m src.app
+# 方式1: 启动脚本
+sh backend/run.sh
+
+# 方式2: 手动
+backend/venv/bin/python -m backend.src.app
 
 # 终端2: 前端 (端口 3000)
-cd webapp
-npm install
-npm run dev
+cd frontend && npm install && npm run dev
 ```
 
-打开 `http://localhost:3000`，三个页面：
+打开 `http://localhost:3000`：
 
-| 路由 | 页面 | 功能 |
-|------|------|------|
-| `/` | 对话 | 流式 AI 对话，多会话管理，工具调用展示 |
-| `/search` | 检索 | 知识库搜索，Markdown 渲染 |
-| `/docs` | 文档 | 上传文件 → AI 自动分类 → 增量索引 |
+| 路由 | 页面 | 功能 | 权限 |
+|------|------|------|------|
+| `/login` | 登录 | 账号登录 | 所有人 |
+| `/register` | 注册 | 注册 + 邮箱验证 | 所有人 |
+| `/forgot-password` | 忘记密码 | 邮箱验证重置密码 | 所有人 |
+| `/` | 对话 | 流式 AI 对话，多会话管理 | 登录用户 |
+| `/search` | 检索 | 知识库搜索 | 登录用户 |
+| `/docs` | 文档 | 查看文档（上传/删除仅 admin）| 登录用户 |
+
+### 4. 桌面端 (macOS)
+
+```bash
+# 1. 构建前端
+cd frontend && npm run build
+
+# 2. 启动 Electron (自动拉起 Python 后端)
+cd ../desktop && npm start
+
+# 3. 打包 dmg
+npm run package:mac
+```
 
 API 文档：`http://localhost:8000/docs`
 
@@ -233,33 +271,58 @@ API 文档：`http://localhost:8000/docs`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| `POST` | `/api/v1/auth/register` | 注册 (发送验证码到邮箱) |
+| `POST` | `/api/v1/auth/verify-email` | 邮箱验证 |
+| `POST` | `/api/v1/auth/send-code` | 重发验证码 |
+| `POST` | `/api/v1/auth/login` | 登录 (需邮箱已验证) |
+| `GET` | `/api/v1/auth/me` | 当前用户 (含 is_admin) |
+| `POST` | `/api/v1/auth/forgot-password` | 发送重置密码验证码 |
+| `POST` | `/api/v1/auth/reset-password` | 重置密码 (自动激活邮箱) |
 | `GET` | `/api/v1/health` | 健康检查 |
 | `POST` | `/api/v1/chat` | 同步对话 |
 | `POST` | `/api/v1/chat/stream` | SSE 流式对话 |
-| `GET` | `/api/v1/rag/documents` | 文档列表 + 索引统计 |
-| `POST` | `/api/v1/rag/upload` | 上传文档 (multipart) |
+| `GET` | `/api/v1/sessions` | 会话列表 |
+| `DELETE` | `/api/v1/sessions/{id}` | 删除会话 |
+| `GET` | `/api/v1/sessions/{id}/messages` | 会话历史消息 |
+| `GET` | `/api/v1/rag/documents` | 文档列表 |
+| `POST` | `/api/v1/rag/upload` | 上传文档 |
 | `POST` | `/api/v1/rag/delete` | 删除文档 |
 
 ### curl 示例
 
 ```bash
-# 健康检查
-curl http://localhost:8000/api/v1/health
+# 注册
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","email":"test@qq.com","password":"123456"}'
 
-# 同步对话
+# 登录 (获取 token)
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"your-password"}'
+
+# 同步对话 (需 token)
 curl -X POST http://localhost:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Python装饰器原理？", "thread_id": "user-001"}'
+  -H "Authorization: Bearer <token>" \
+  -d '{"message":"Python装饰器原理？","thread_id":"u-001"}'
 
 # 流式对话
 curl -N -X POST http://localhost:8000/api/v1/chat/stream \
   -H "Content-Type: application/json" \
-  -d '{"message": "分析src/tools/code_tools.py", "thread_id": "user-001"}'
-
-# 上传文档
-curl -X POST http://localhost:8000/api/v1/rag/upload \
-  -F "files=@my-doc.md"
+  -H "Authorization: Bearer <token>" \
+  -d '{"message":"分析代码工具实现","thread_id":"u-001"}'
 ```
+
+---
+## 权限说明
+
+| 角色 | 权限 |
+|------|------|
+| **admin** (系统保留) | 登录、对话、检索、上传文档、删除文档 |
+| **普通用户** (注册+邮箱验证) | 登录、对话、检索、查看文档 |
+
+admin 账号 `admin` 为系统保留，其他人无法注册该用户名。文档上传/删除仅 admin 可见和可用。
 
 ---
 
@@ -293,7 +356,7 @@ curl -X POST http://localhost:8000/api/v1/rag/upload \
 
 ## 文档上传与 AI 分类
 
-上传 `.txt` `.md` `.pdf` 文件时：
+admin 上传 `.txt` `.md` `.pdf` 文件时：
 
 1. 文件读到临时位置
 2. 提取前 800 字，调用 AI 判断分类（如 `Python编程`、`数据库`）
@@ -306,7 +369,7 @@ curl -X POST http://localhost:8000/api/v1/rag/upload \
 
 ### 切换到 OpenAI
 
-修改 `.env`：
+修改 `backend/.env`：
 
 ```bash
 LLM_API_KEY=sk-your-openai-key
