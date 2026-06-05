@@ -1,18 +1,29 @@
-# 环境
+# 虚拟环境
 venv/
-.env
+.venv/
 __pycache__/
 *.pyc
-.idea/
-.vscode/
+*.egg-info/
+
+# 环境变量
+.env
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+
+# 桌面端
+desktop/node_modules/
+desktop/dist/
 
 # 数据
 data/chroma/
-data/checkpoints.db
+*.db
 logs/
+
+# IDE
+.idea/
+.vscode/
 
 # 系统
 .DS_Store
-*.egg-info/
-dist/
-build/
